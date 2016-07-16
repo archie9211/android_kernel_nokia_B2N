@@ -129,5 +129,11 @@ config PXLW_IRIS3
 	depends on FB_MSM_MDSS
 	bool "Enable pxlw iris3"
 	default y
+config FB_MSM_MDSS_KCAL_CTRL
+	depends on FB_MSM_MDSS
+	bool "MDSS color control"
+	---help---
+	  Enable sysfs for post-processing control of mdss-mdp5 display
+	  controllers in MDSS.
 
 endif
