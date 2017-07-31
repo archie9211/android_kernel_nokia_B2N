@@ -68,6 +68,7 @@ obj-$(CONFIG_QPNP_MISC) 	+= qpnp-misc.o
 obj-$(CONFIG_MEMORY_STATE_TIME) += memory_state_time.o
 #sharp param, zhangzhe@20171101
 obj-y                           += sharp_param.o
+obj-$(CONFIG_FORCE_FAST_CHARGE) += fastchg.o
 
 # TODO: remove me b/62058353
 subdir-ccflags-y += \
