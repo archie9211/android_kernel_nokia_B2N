@@ -10,6 +10,7 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/fastchg.h>
 #include <linux/device.h>
 #include <linux/regmap.h>
 #include <linux/delay.h>
@@ -30,7 +31,6 @@
 static bool forecast_charging = false; // porting from A1N
 
 #ifdef CONFIG_FORCE_FAST_CHARGE
-#include <linux/fastchg.h>
 #endif
 
 #define smblib_err(chg, fmt, ...)		\
