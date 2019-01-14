@@ -352,7 +352,7 @@ int ion_do_cache_op(struct ion_client *client, struct ion_handle *handle,
 	if (!ION_IS_CACHED(flags))
 		return 0;
 
-	if (get_secure_vmid(flags) > 0)
+	if (flags & ION_FLAG_SECURE)
 		return 0;
 
 	table = ion_sg_table(client, handle);
@@ -678,21 +678,6 @@ int get_secure_vmid(unsigned long flags)
 		return VMID_CP_SPSS_SP_SHARED;
 	return -EINVAL;
 }
-
-bool is_buffer_hlos_assigned(struct ion_buffer *buffer)
-{
-	bool is_hlos = false;
-
-	if (buffer->heap->type == (enum ion_heap_type)ION_HEAP_TYPE_HYP_CMA &&
-	    (buffer->flags & ION_FLAG_CP_HLOS))
-		is_hlos = true;
-
-	if (get_secure_vmid(buffer->flags) <= 0)
-		is_hlos = true;
-
-	return is_hlos;
-}
-
 /* fix up the cases where the ioctl direction bits are incorrect */
 static unsigned int msm_ion_ioctl_dir(unsigned int cmd)
 {
@@ -738,16 +723,13 @@ long msm_ion_custom_ioctl(struct ion_client *client,
 		struct mm_struct *mm = current->active_mm;
 
 		if (data.flush_data.handle > 0) {
-			mutex_lock(&client->lock);
-			handle = ion_handle_get_by_id_nolock(client,
+			handle = ion_handle_get_by_id(client,
 						(int)data.flush_data.handle);
 			if (IS_ERR(handle)) {
-				mutex_unlock(&client->lock);
 				pr_info("%s: Could not find handle: %d\n",
 					__func__, (int)data.flush_data.handle);
 				return PTR_ERR(handle);
 			}
-			mutex_unlock(&client->lock);
 		} else {
 			handle = ion_import_dma_buf(client, data.flush_data.fd);
 			if (IS_ERR(handle)) {
@@ -759,9 +741,9 @@ long msm_ion_custom_ioctl(struct ion_client *client,
 
 		down_read(&mm->mmap_sem);
 
-		start = (unsigned long)data.flush_data.vaddr +
-			data.flush_data.offset;
-		end = start + data.flush_data.length;
+		start = (unsigned long) data.flush_data.vaddr;
+		end = (unsigned long) data.flush_data.vaddr
+			+ data.flush_data.length;
 
 		if (start && check_vaddr_bounds(start, end)) {
 			pr_err("%s: virtual address %pK is out of bounds\n",

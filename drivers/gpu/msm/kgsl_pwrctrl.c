@@ -2785,7 +2785,7 @@ static int _suspend(struct kgsl_device *device)
 	if ((device->state == KGSL_STATE_NONE) ||
 			(device->state == KGSL_STATE_INIT) ||
 			(device->state == KGSL_STATE_SUSPEND))
-		return ret;
+		goto done;
 
 	/* drain to prevent from more commands being submitted */
 	device->ftbl->drain(device);
@@ -2802,6 +2802,7 @@ static int _suspend(struct kgsl_device *device)
 	if (ret)
 		goto err;
 
+done:
 	kgsl_pwrctrl_set_state(device, KGSL_STATE_SUSPEND);
 	return ret;
 
@@ -3178,3 +3179,40 @@ unsigned int kgsl_pwr_limits_get_freq(enum kgsl_deviceid id)
 	return freq;
 }
 EXPORT_SYMBOL(kgsl_pwr_limits_get_freq);
+
+#ifdef CONFIG_FIH_CPU_USAGE
+void kgsl_pwr_quick_get_infos(unsigned int *min, unsigned int *max, unsigned *curr, unsigned *therm)
+{
+/*
+	struct kgsl_device *device = kgsl_get_device(KGSL_DEVICE_3D0);
+	struct kgsl_pwrctrl *pwr;
+*/
+	static struct kgsl_device *device = NULL;
+	struct kgsl_pwrctrl *pwr;
+        int i;
+
+	if (device == NULL) {
+		for (i = 0; i < KGSL_DEVICE_MAX; i++) {
+			if (kgsl_driver.devp[i] && kgsl_driver.devp[i]->id == KGSL_DEVICE_3D0) {
+				device = kgsl_driver.devp[i];
+				break;
+			}
+		}
+	}
+
+	if (IS_ERR_OR_NULL(device))
+		return;
+	pwr = &device->pwrctrl;
+//	mutex_lock(&device->mutex);
+	if (min)
+		*min = pwr->pwrlevels[pwr->min_pwrlevel].gpu_freq / 1000000;
+	if (max)
+		*max = pwr->pwrlevels[pwr->max_pwrlevel].gpu_freq / 1000000;
+	if (curr)
+		*curr = pwr->pwrlevels[pwr->active_pwrlevel].gpu_freq / 1000000;
+	if (therm)
+		*therm = pwr->pwrlevels[pwr->thermal_pwrlevel].gpu_freq / 1000000;
+//	mutex_unlock(&device->mutex);
+}
+EXPORT_SYMBOL(kgsl_pwr_quick_get_infos);
+#endif

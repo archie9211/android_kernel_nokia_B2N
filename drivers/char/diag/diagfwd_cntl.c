@@ -454,7 +454,7 @@ static void process_incoming_feature_mask(uint8_t *buf, uint32_t len,
 	}
 
 	if (feature_mask_len > FEATURE_MASK_LEN) {
-		pr_alert("diag: Receiving feature mask length more than Apps support\n");
+		pr_err("diag: Receiving feature mask length more than Apps support\n");
 		feature_mask_len = FEATURE_MASK_LEN;
 	}
 
@@ -613,12 +613,7 @@ static int update_msg_mask_tbl_entry(struct diag_msg_mask_t *mask,
 	}
 	if (range->ssid_last >= mask->ssid_last) {
 		temp_range = range->ssid_last - mask->ssid_first + 1;
-		if (temp_range > MAX_SSID_PER_RANGE) {
-			temp_range = MAX_SSID_PER_RANGE;
-			mask->ssid_last = mask->ssid_first + temp_range - 1;
-		} else
-			mask->ssid_last = range->ssid_last;
-		mask->ssid_last_tools = mask->ssid_last;
+		mask->ssid_last = range->ssid_last;
 		mask->range = temp_range;
 	}
 
