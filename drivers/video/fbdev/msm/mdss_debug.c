@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2009-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -26,6 +26,7 @@
 #include "mdss_mdp_hwio.h"
 #include "mdss_debug.h"
 #include "mdss_dsi.h"
+
 
 #define DEFAULT_BASE_REG_CNT 0x100
 #define GROUP_BYTES 4
@@ -245,7 +246,6 @@ static ssize_t panel_debug_base_reg_write(struct file *file,
 
 	if (ctrl_pdata->ctrl_state & CTRL_STATE_PANEL_INIT)
 		mdss_dsi_cmdlist_put(ctrl_pdata, &cmdreq);
-
 	if (mdata->debug_inf.debug_enable_clock)
 		mdata->debug_inf.debug_enable_clock(0);
 
@@ -297,12 +297,12 @@ static ssize_t panel_debug_base_reg_read(struct file *file,
 	panel_reg[0] = dbg->off;
 	mdss_dsi_panel_cmd_read(ctrl_pdata, panel_reg[0], panel_reg[1],
 				NULL, rx_buf, dbg->cnt);
-
 	len = scnprintf(panel_reg_buf, reg_buf_len, "0x%02zx: ", dbg->off);
 
 	for (i = 0; (len < reg_buf_len) && (i < ctrl_pdata->rx_len); i++)
 		len += scnprintf(panel_reg_buf + len, reg_buf_len - len,
 				"0x%02x ", rx_buf[i]);
+
 
 	if (len)
 		panel_reg_buf[len - 1] = '\n';
@@ -433,39 +433,6 @@ static int mdss_debug_base_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-/**
- * mdss_debug_base_is_valid_range - verify if requested memory range is valid
- * @off: address offset in bytes
- * @cnt: memory size in bytes
- * Return: true if valid; false otherwise
- */
-static bool mdss_debug_base_is_valid_range(u32 off, u32 cnt)
-{
-	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
-	struct mdss_debug_data *mdd = mdata->debug_inf.debug_data;
-	struct range_dump_node *node;
-	struct mdss_debug_base *base;
-
-	pr_debug("check offset=0x%x cnt=0x%x\n", off, cnt);
-
-	list_for_each_entry(base, &mdd->base_list, head) {
-		list_for_each_entry(node, &base->dump_list, head) {
-			pr_debug("%s: start=0x%x end=0x%x\n", node->range_name,
-					node->offset.start, node->offset.end);
-
-			if (node->offset.start <= off
-					&& off <= node->offset.end
-					&& off + cnt <= node->offset.end) {
-				pr_debug("valid range requested\n");
-				return true;
-			}
-		}
-	}
-
-	pr_err("invalid range requested\n");
-	return false;
-}
-
 static ssize_t mdss_debug_base_offset_write(struct file *file,
 		    const char __user *user_buf, size_t count, loff_t *ppos)
 {
@@ -485,8 +452,7 @@ static ssize_t mdss_debug_base_offset_write(struct file *file,
 
 	buf[count] = 0;	/* end of string */
 
-	if (sscanf(buf, "%5x %x", &off, &cnt) != 2)
-		return -EFAULT;
+	sscanf(buf, "%5x %x", &off, &cnt);
 
 	if (off % sizeof(u32))
 		return -EINVAL;
@@ -496,9 +462,6 @@ static ssize_t mdss_debug_base_offset_write(struct file *file,
 
 	if (cnt > (dbg->max_offset - off))
 		cnt = dbg->max_offset - off;
-
-	if (!mdss_debug_base_is_valid_range(off, cnt))
-		return -EINVAL;
 
 	mutex_lock(&mdss_debug_lock);
 	dbg->off = off;
