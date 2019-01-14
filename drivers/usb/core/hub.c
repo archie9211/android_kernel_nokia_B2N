@@ -295,7 +295,8 @@ static void usb_set_lpm_sel(struct usb_device *udev,
 	udev_lpm_params->sel = total_sel;
 }
 
-static void usb_set_lpm_parameters(struct usb_device *udev)
+//20171108@Bobihlee from QC can't support 0201 LPM. 
+static void __maybe_unused usb_set_lpm_parameters(struct usb_device *udev)
 {
 	struct usb_hub *hub;
 	unsigned int port_to_port_delay;
@@ -2222,7 +2223,7 @@ static int usb_enumerate_device_otg(struct usb_device *udev)
 		/* descriptor may appear anywhere in config */
 		err = __usb_get_extra_descriptor(udev->rawdescriptors[0],
 				le16_to_cpu(udev->config[0].desc.wTotalLength),
-				USB_DT_OTG, (void **) &desc, sizeof(*desc));
+				USB_DT_OTG, (void **) &desc);
 		if (err || !(desc->bmAttributes & USB_OTG_HNP))
 			return 0;
 
@@ -2768,9 +2769,7 @@ static int hub_port_reset(struct usb_hub *hub, int port1,
 					USB_PORT_FEAT_C_BH_PORT_RESET);
 			usb_clear_port_feature(hub->hdev, port1,
 					USB_PORT_FEAT_C_PORT_LINK_STATE);
-
-			if (udev)
-				usb_clear_port_feature(hub->hdev, port1,
+			usb_clear_port_feature(hub->hdev, port1,
 					USB_PORT_FEAT_C_CONNECTION);
 
 			/*
@@ -4604,11 +4603,14 @@ hub_port_init(struct usb_hub *hub, struct usb_device *udev, int port1,
 	usb_detect_quirks(udev);
 
 	if (udev->wusb == 0 && le16_to_cpu(udev->descriptor.bcdUSB) >= 0x0201) {
-		retval = usb_get_bos_descriptor(udev);
+		//20171108@Bobihlee from QC can't support 0201 LPM. ,Begin 
+		dev_dbg(&udev->dev, "from QC can't support 0201 LPM \n");
+/*		retval = usb_get_bos_descriptor(udev);
 		if (!retval) {
 			udev->lpm_capable = usb_device_supports_lpm(udev);
 			usb_set_lpm_parameters(udev);
-		}
+		} */
+		//20171108@Bobihlee from QC can't support 0201 LPM. ,End 
 	}
 
 	retval = 0;
