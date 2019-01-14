@@ -216,4 +216,6 @@ source "drivers/tee/Kconfig"
 
 source "drivers/fih/Kconfig"
 
+source "drivers/haptics/Kconfig"
+
 endmenu
