@@ -902,12 +902,7 @@ static void __init log_buf_len_update(unsigned size)
 /* save requested log_buf_len since it's too early to process it */
 static int __init log_buf_len_setup(char *str)
 {
-	unsigned int size;
-
-	if (!str)
-		return -EINVAL;
-
-	size = memparse(str, &str);
+	unsigned size = memparse(str, &str);
 
 	log_buf_len_update(size);
 
@@ -2203,8 +2198,6 @@ void resume_console(void)
 	console_unlock();
 }
 
-#ifdef CONFIG_CONSOLE_FLUSH_ON_HOTPLUG
-
 /**
  * console_cpu_notify - print deferred console messages after CPU hotplug
  * @self: notifier struct
@@ -2233,8 +2226,6 @@ static int console_cpu_notify(struct notifier_block *self,
 	}
 	return NOTIFY_OK;
 }
-
-#endif
 
 /**
  * console_lock - lock the console system for exclusive use.
@@ -2800,9 +2791,7 @@ static int __init printk_late_init(void)
 			unregister_console(con);
 		}
 	}
-#ifdef CONFIG_CONSOLE_FLUSH_ON_HOTPLUG
 	hotcpu_notifier(console_cpu_notify, 0);
-#endif
 	return 0;
 }
 late_initcall(printk_late_init);
