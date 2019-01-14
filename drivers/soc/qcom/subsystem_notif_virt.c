@@ -21,77 +21,38 @@
 #include <linux/of_platform.h>
 #include <linux/of_device.h>
 #include <linux/of_address.h>
-#include <linux/of_irq.h>
 #include <linux/platform_device.h>
-#include <linux/interrupt.h>
-#include <linux/workqueue.h>
 #include <soc/qcom/subsystem_notif.h>
-
-#define CLIENT_STATE_OFFSET 4
-#define SUBSYS_STATE_OFFSET 8
 
 static void __iomem *base_reg;
 
-enum subsystem_type {
-	VIRTUAL,
-	NATIVE,
-};
-
-struct subsystem_descriptor {
-	const char *name;
-	u32 offset;
-	enum subsystem_type type;
+struct state_notifier_block {
+	const char *subsystem;
 	struct notifier_block nb;
+	u32 offset;
 	void *handle;
-	unsigned int ssr_irq;
-	struct list_head subsystem_list;
-	struct work_struct work;
+	struct list_head notifier_list;
 };
 
-static LIST_HEAD(subsystem_descriptor_list);
-static struct workqueue_struct *ssr_wq;
+static LIST_HEAD(notifier_block_list);
 
-static void subsystem_notif_wq_func(struct work_struct *work)
-{
-	struct subsystem_descriptor *subsystem =
-		container_of(work, struct subsystem_descriptor, work);
-	void *subsystem_handle;
-	int state, ret;
-
-	state = readl_relaxed(base_reg + subsystem->offset);
-	subsystem_handle = subsys_notif_add_subsys(subsystem->name);
-	ret = subsys_notif_queue_notification(subsystem_handle, state, NULL);
-	writel_relaxed(ret, base_reg + subsystem->offset + CLIENT_STATE_OFFSET);
-}
-
-static int subsystem_state_callback(struct notifier_block *this,
+static int subsys_state_callback(struct notifier_block *this,
 		unsigned long value, void *priv)
 {
-	struct subsystem_descriptor *subsystem =
-		container_of(this, struct subsystem_descriptor, nb);
+	struct state_notifier_block *notifier =
+		container_of(this, struct state_notifier_block, nb);
 
-	writel_relaxed(value, base_reg + subsystem->offset +
-			SUBSYS_STATE_OFFSET);
+	writel_relaxed(value, base_reg + notifier->offset);
 
 	return NOTIFY_OK;
-}
-
-static irqreturn_t subsystem_restart_irq_handler(int irq, void *dev_id)
-{
-	struct subsystem_descriptor *subsystem = dev_id;
-
-	queue_work(ssr_wq, &subsystem->work);
-
-	return IRQ_HANDLED;
 }
 
 static int subsys_notif_virt_probe(struct platform_device *pdev)
 {
 	struct device_node *node;
 	struct device_node *child = NULL;
-	const char *ss_type;
 	struct resource *res;
-	struct subsystem_descriptor *subsystem;
+	struct state_notifier_block *notif_block;
 	int ret = 0;
 
 	if (!pdev) {
@@ -108,109 +69,65 @@ static int subsys_notif_virt_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	ssr_wq = create_singlethread_workqueue("ssr_wq");
-	if (!ssr_wq) {
-		dev_err(&pdev->dev, "Workqueue creation failed\n");
-		return -ENOMEM;
-	}
-
 	for_each_child_of_node(node, child) {
 
-		subsystem = devm_kmalloc(&pdev->dev,
-				sizeof(struct subsystem_descriptor),
+		notif_block = devm_kmalloc(&pdev->dev,
+				sizeof(struct state_notifier_block),
 				GFP_KERNEL);
-		if (!subsystem) {
-			ret = -ENOMEM;
-			goto err;
-		}
+		if (!notif_block)
+			return -ENOMEM;
 
-		subsystem->name =
-			of_get_property(child, "subsys-name", NULL);
-		if (IS_ERR_OR_NULL(subsystem->name)) {
+		notif_block->subsystem =
+				of_get_property(child, "subsys-name", NULL);
+		if (IS_ERR_OR_NULL(notif_block->subsystem)) {
 			dev_err(&pdev->dev, "Could not find subsystem name\n");
 			ret = -EINVAL;
-			goto err;
+			goto err_nb;
+		}
+
+		notif_block->nb.notifier_call = subsys_state_callback;
+
+		notif_block->handle =
+			subsys_notif_register_notifier(notif_block->subsystem,
+				&notif_block->nb);
+		if (IS_ERR_OR_NULL(notif_block->handle)) {
+			dev_err(&pdev->dev, "Could not register SSR notifier cb\n");
+			ret = -EINVAL;
+			goto err_nb;
 		}
 
 		ret = of_property_read_u32(child, "offset",
-				&subsystem->offset);
+				&notif_block->offset);
 		if (ret) {
 			dev_err(&pdev->dev, "offset reading for %s failed\n",
-					subsystem->name);
+				notif_block->subsystem);
 			ret = -EINVAL;
-			goto err;
+			goto err_offset;
 		}
 
-		ret = of_property_read_string(child, "type",
-				&ss_type);
-		if (ret) {
-			dev_err(&pdev->dev, "type reading for %s failed\n",
-					subsystem->name);
-			ret = -EINVAL;
-			goto err;
-		}
+		list_add_tail(&notif_block->notifier_list,
+			&notifier_block_list);
 
-		if (!strcmp(ss_type, "virtual"))
-			subsystem->type = VIRTUAL;
-
-		if (!strcmp(ss_type, "native"))
-			subsystem->type = NATIVE;
-
-		switch (subsystem->type) {
-		case NATIVE:
-			subsystem->nb.notifier_call =
-				subsystem_state_callback;
-
-			subsystem->handle =
-				subsys_notif_register_notifier(
-					subsystem->name, &subsystem->nb);
-			if (IS_ERR_OR_NULL(subsystem->handle)) {
-				dev_err(&pdev->dev,
-					"Could not register SSR notifier cb\n");
-				ret = -EINVAL;
-				goto err;
-			}
-			list_add_tail(&subsystem->subsystem_list,
-					&subsystem_descriptor_list);
-			break;
-		case VIRTUAL:
-			subsystem->ssr_irq =
-				of_irq_get_byname(child, "state-irq");
-			if (subsystem->ssr_irq < 0) {
-				dev_err(&pdev->dev, "Could not find IRQ\n");
-				ret = -EINVAL;
-				goto err;
-			}
-			ret = devm_request_threaded_irq(&pdev->dev,
-					subsystem->ssr_irq, NULL,
-					subsystem_restart_irq_handler,
-					IRQF_ONESHOT | IRQF_TRIGGER_RISING,
-					subsystem->name, subsystem);
-			break;
-		default:
-			dev_err(&pdev->dev, "Unsupported type %d\n",
-				subsystem->type);
-		}
 	}
-
-	INIT_WORK(&subsystem->work, subsystem_notif_wq_func);
 	return 0;
-err:
-	destroy_workqueue(ssr_wq);
+
+err_offset:
+	subsys_notif_unregister_notifier(notif_block->handle,
+		&notif_block->nb);
+err_nb:
+	kfree(notif_block);
 	return ret;
 }
 
 static int subsys_notif_virt_remove(struct platform_device *pdev)
 {
-	struct subsystem_descriptor *subsystem, *node;
+	struct state_notifier_block *notif_block;
 
-	destroy_workqueue(ssr_wq);
-
-	list_for_each_entry_safe(subsystem, node, &subsystem_descriptor_list,
-			subsystem_list) {
-		subsys_notif_unregister_notifier(subsystem->handle,
-				&subsystem->nb);
-		list_del(&subsystem->subsystem_list);
+	list_for_each_entry(notif_block, &notifier_block_list,
+			notifier_list) {
+		subsys_notif_unregister_notifier(notif_block->handle,
+			&notif_block->nb);
+		list_del(&notif_block->notifier_list);
 	}
 	return 0;
 }
