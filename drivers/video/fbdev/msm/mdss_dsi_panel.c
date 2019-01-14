@@ -1266,9 +1266,6 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	struct mdss_dsi_ctrl_pdata *sctrl = NULL;
 	int res = 1;	//SW4-HL-Display-ImplementCECTCABC-00+_20160126
-#if defined(CONFIG_PXLW_IRIS3)
-	struct iris_setting_info *psetting = NULL;
-#endif
 
 	pr_debug("[HL]%s: <-- start\n", __func__);
 	pr_debug("[HL]%s: bl_level = %d\n", __func__, bl_level);
@@ -1538,15 +1535,6 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 
 	/* enable the backlight gpio if present */
 	mdss_dsi_bl_gpio_ctrl(pdata, bl_level);
-
-#if defined(CONFIG_PXLW_IRIS3)
-	psetting = iris_get_setting();
-	psetting->quality_cur.system_brightness = bl_level;
-	/* Don't set panel's brightness during HDR/SDR2HDR */
-	/* Set panel's brightness when sdr2hdr mode is 3 */
-	if (iris_is_valid_cfg() && psetting->quality_cur.pq_setting.sdr2hdr != SDR2HDR_Bypass && iris_get_sdr2hdr_mode() != 3)
-		return;
-#endif
 
 	switch (ctrl_pdata->bklt_ctrl) {
 	case BL_WLED:
